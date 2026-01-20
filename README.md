@@ -152,6 +152,12 @@ python cluster_predict.py --cb-list test-cb-list.txt --bam keep-bc-sub.bam --snp
 
 -   `clustering-test-best-k.txt`: Raw data used for generating the elbow curve
 
+An example of the elbow curve plot is shown below:
+
+
+<img width="340" height="175" alt="image" src="https://github.com/user-attachments/assets/f88cecb6-9e29-4b75-ac4f-2a264220b37d" />
+
+
 ### Step 3: `imputed.py`
 
 This module performs low-depth sequencing imputation using sequencing data from different droplet groups to obtain reliable genotype calls for each group.
