@@ -1,0 +1,44 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tagtools"
+version = "1.0.0"
+description = "A single-cell demultiplexing tool without prior genotype knowledge"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+authors = [
+    {name = "Guo-wang Lin", email = "lingw6@alumni.sysu.edu.cn"}
+]
+keywords = ["single-cell", "demultiplexing", "genomics", "bioinformatics"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.8",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Operating System :: POSIX :: Linux",
+]
+dependencies = [
+    "numba>=0.56.0",
+    "numpy>=1.21.0",
+    "scikit-learn>=1.0.0",
+    "matplotlib>=3.5.0",
+]
+
+[project.scripts]
+tagtools = "tagtools.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/MicrobeLab/TagTools"
+Repository = "https://github.com/MicrobeLab/TagTools"
+Issues = "https://github.com/MicrobeLab/TagTools/issues"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["tagtools*"]
