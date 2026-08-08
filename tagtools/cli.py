@@ -9,11 +9,14 @@ Commands:
     cluster        Cluster prediction from SNP data (Step 2)
     impute         Imputed haplotype using groups of cells (Step 3)
     demultiplex    Demultiplexing using demuxlet (Step 4)
+    index          Create index for bgzip compressed file
+    split          Split BAM file by tag
+    call           Call variants and perform genotyping
 """
 
 import argparse
 import sys
-from . import reference, cluster, impute, demultiplex
+from . import reference, cluster, impute, demultiplex, index, split, call
 
 
 def main():
@@ -28,6 +31,9 @@ Examples:
     tagtools cluster --cb-list barcodes.txt --bam input.bam --snp-site sites.gz --sample-num 3 --ref genome.fa --out-name cluster
     tagtools impute --bam input.bam --cb-group groups.txt --snp-site sites.gz --hap panel.bcf --chunk regions.txt --ref genome.fa --out-name impute
     tagtools demultiplex --vcf imputed.bcf --bam input.bam --cb-list barcodes.txt --out-dir demux --nt 48
+    tagtools index --file data.gz
+    tagtools split --bam sample.bam --tag-list tags.txt --out-dir output/
+    tagtools call --bam sample.bam --ref genome.fa --site sites.txt --out-name results
         """
     )
 
@@ -124,6 +130,62 @@ Examples:
     demux_parser.add_argument('--info', type=float, default=0.4,
                             help='INFO score to filter imputed genotype, default: 0.4.')
     demux_parser.set_defaults(func=demultiplex.main)
+
+    # === Command 5: index (index.py) ===
+    index_parser = subparsers.add_parser(
+        'index',
+        help='Create index for bgzip compressed file',
+        description='Create index for bgzip compressed file to enable random access.'
+    )
+    index_parser.add_argument('--file', required=True,
+                            help='Path to bgzip compressed file')
+    index_parser.add_argument('-o', '--index-name',
+                            help='Output path for index file (default: file.gzi)')
+    index_parser.set_defaults(func=index.main)
+
+    # === Command 6: split (split.py) ===
+    split_parser = subparsers.add_parser(
+        'split',
+        help='Split BAM file by tag',
+        description='Split a BAM file into separate files based on a specified tag value.'
+    )
+    split_parser.add_argument('--bam', required=True,
+                            help='Input BAM file path')
+    split_parser.add_argument('--nt', type=int, default=4,
+                            help='Number of threads (default: 4)')
+    split_parser.add_argument('--out-dir', required=True,
+                            help='Output directory')
+    split_parser.add_argument('--tag-name', default='CB',
+                            help='Tag name (default: CB)')
+    split_parser.add_argument('--tag-list', required=True,
+                            help='Tag list file')
+    split_parser.add_argument('--region-file',
+                            help='Region file (optional)')
+    split_parser.set_defaults(func=split.main)
+
+    # === Command 7: call (call.py) ===
+    call_parser = subparsers.add_parser(
+        'call',
+        help='Call variants and perform genotyping',
+        description='Call variants from BAM files and compute genotype likelihoods (PL values).'
+    )
+    call_parser.add_argument('--bam', required=True,
+                           help='Input BAM file path')
+    call_parser.add_argument('--nt', type=int, default=4,
+                           help='Number of threads (default: 4)')
+    call_parser.add_argument('--out-name', required=True,
+                           help='Output file name')
+    call_parser.add_argument('--ref', required=True,
+                           help='Reference genome file')
+    call_parser.add_argument('--tag-name', default='CB',
+                           help='Tag name (default: CB)')
+    call_parser.add_argument('--tag-list', required=True,
+                           help='Tag list file')
+    call_parser.add_argument('--site', required=True,
+                           help='Site file')
+    call_parser.add_argument('--chunk-size', type=int, default=20,
+                           help='Chunk size (default: 20)')
+    call_parser.set_defaults(func=call.main)
 
     # Parse arguments
     args = parser.parse_args()
