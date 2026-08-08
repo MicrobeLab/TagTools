@@ -13,7 +13,7 @@
     -   `scikit-learn`
     -   `matplotlib`
 
--   External tools that should be available in shell $PATH:
+-   External tools that should be available in shell \$PATH:
 
     -   `mawk`
     -   [`GLIMPSE_phase` (v1)](https://odelaneau.github.io/GLIMPSE/glimpse1/index.html)
@@ -30,7 +30,7 @@
 
 ### Install from source
 
-```bash
+``` bash
 # Clone the repository
 git clone https://github.com/MicrobeLab/TagTools.git
 cd TagTools
@@ -46,22 +46,32 @@ After installation, the `tagtools` command will be available in your system.
 
 ### Verify installation
 
-```bash
+``` bash
 tagtools --help
 ```
 
 ------------------------------------------------------------------------
 
-## Usage Overview
+## Usage overview
 
-TagTools consists of four modules that can be called via the `tagtools` command:
+TagTools consists of two categories of modules that can be called via the `tagtools` command:
 
-| Module | Command | Description |
-|--------|---------|-------------|
-| reference | `tagtools reference` | Create haplotype panel from VCF files |
-| cluster | `tagtools cluster` | Cluster prediction from SNP data |
-| impute | `tagtools impute` | Imputed haplotype using groups of cells |
-| demultiplex | `tagtools demultiplex` | Demultiplexing using demuxlet |
+#### Core workflow modules (steps 1-4)
+
+| Module      | Command                | Description                             |
+|--------------------|----------------------|------------------------------|
+| reference   | `tagtools reference`   | Create haplotype panel from VCF files   |
+| cluster     | `tagtools cluster`     | Cluster prediction from SNP data        |
+| impute      | `tagtools impute`      | Imputed haplotype using groups of cells |
+| demultiplex | `tagtools demultiplex` | Demultiplexing using demuxlet           |
+
+#### Utility modules (BAM file processing toolkit)
+
+| Module | Command          | Description                            |
+|--------|------------------|----------------------------------------|
+| index  | `tagtools index` | Create index for bgzip compressed file |
+| split  | `tagtools split` | Split BAM file by tag                  |
+| call   | `tagtools call`  | Call variants and perform genotyping   |
 
 ------------------------------------------------------------------------
 
@@ -71,13 +81,13 @@ A demo dataset is available for download [here](https://figshare.com/s/1ea477d11
 
 ------------------------------------------------------------------------
 
-## Detailed Usage
+## Detailed usage
 
 ### Step 1: `tagtools reference`
 
 Create a haplotype panel from VCF files.
 
-```bash
+``` bash
 tagtools reference --help
 
 usage: tagtools reference [-h] --vcf-list VCF_LIST --out-name OUT_NAME --nt NT [--add-chr] [--rm-chr]
@@ -103,7 +113,7 @@ Save the paths to all autosomal haplotype VCF files in a text file (e.g., `vcf_f
 
 **Example command using the demo dataset:**
 
-```bash
+``` bash
 tagtools reference --vcf-list vcf_files.txt --out-name 1000-genome-38-for-imp-2 --rm-chr --nt 48
 ```
 
@@ -116,7 +126,7 @@ tagtools reference --vcf-list vcf_files.txt --out-name 1000-genome-38-for-imp-2 
 
 -   `1000-genome-38-for-imp-2.bcf` (and .csi index): The haplotype panel file
 -   `1000-genome-38-for-imp-2.site.gz` (and .csi index): SNP site file containing all variants from the haplotype panel
--   `1000-genome-38-for-imp-2.MAF0.05.site.gz` (and .csi index): SNP site file filtered for variants with Minor Allele Frequency (MAF) > 0.05
+-   `1000-genome-38-for-imp-2.MAF0.05.site.gz` (and .csi index): SNP site file filtered for variants with Minor Allele Frequency (MAF) \> 0.05
 -   `1000-genome-38-for-imp-2.region`: Chunked region file dividing the genome into intervals for parallel processing
 
 ------------------------------------------------------------------------
@@ -125,7 +135,7 @@ tagtools reference --vcf-list vcf_files.txt --out-name 1000-genome-38-for-imp-2 
 
 This module performs genotype similarity detection and clustering for single cells by taking as input: a cell barcode list, a single-cell sequencing BAM file, and a set of SNP sites for variant calling.
 
-```bash
+``` bash
 tagtools cluster --help
 
 usage: tagtools cluster [-h] --bam BAM --out-name OUT_NAME --cb-list CB_LIST --snp-site SNP_SITE --ref REF --sample-num SAMPLE_NUM [--nt NT] [--plot-log]
@@ -148,7 +158,7 @@ options:
 
 **Example command using the demo dataset:**
 
-```bash
+``` bash
 tagtools cluster --cb-list test-cb-list.txt --bam keep-bc-sub.bam --snp-site 1000-genome-38-for-imp-2.MAF0.05.site.gz --sample-num 3 --nt 48 --plot-log --ref genome.fa --out-name clustering-test
 ```
 
@@ -156,7 +166,7 @@ tagtools cluster --cb-list test-cb-list.txt --bam keep-bc-sub.bam --snp-site 100
 
 -   `test-cb-list.txt`: Cell barcode list file for testing
 -   `keep-bc-sub.bam`: Mixed-sample BAM file
--   `1000-genome-38-for-imp-2.MAF0.05.site.gz`: Common SNP sites (MAF > 0.05) from the 1000 Genomes Project
+-   `1000-genome-38-for-imp-2.MAF0.05.site.gz`: Common SNP sites (MAF \> 0.05) from the 1000 Genomes Project
 -   `--sample-num 3`: Number of multiplexed samples
 -   `--ref genome.fa`: Reference genome file for genotype likelihood calculation
 
@@ -171,7 +181,7 @@ tagtools cluster --cb-list test-cb-list.txt --bam keep-bc-sub.bam --snp-site 100
 
 An example of the elbow curve plot is shown below:
 
-<img width="340" height="175" alt="image" src="https://github.com/user-attachments/assets/f88cecb6-9e29-4b75-ac4f-2a264220b37d" />
+<img src="https://github.com/user-attachments/assets/f88cecb6-9e29-4b75-ac4f-2a264220b37d" alt="image" width="340" height="175"/>
 
 ------------------------------------------------------------------------
 
@@ -179,7 +189,7 @@ An example of the elbow curve plot is shown below:
 
 This module performs low-depth sequencing imputation using sequencing data from different droplet groups to obtain reliable genotype calls for each group.
 
-```bash
+``` bash
 tagtools impute --help
 
 usage: tagtools impute [-h] --bam BAM --out-name OUT_NAME --ref REF --snp-site SNP_SITE --hap HAP --chunk CHUNK --cb-group CB_GROUP [--nt NT]
@@ -201,14 +211,14 @@ options:
 
 **Example command using the demo dataset:**
 
-```bash
+``` bash
 tagtools impute --bam keep-bc-sub.bam --out-name imputed-test --ref genome.fa --nt 48 --snp-site 1000-genome-38-for-imp-2.site.gz --hap 1000-genome-38-for-imp-2.bcf --chunk 1000-genome-38-for-imp-2.region --cb-group clustering-test-predict.singlet
 ```
 
 **Parameter details:**
 
 -   `1000-genome-38-for-imp-2.bcf`: Haplotype panel file created in Step 1
--   `1000-genome-38-for-imp-2.site.gz`: SNP site file containing all variants from the haplotype panel (including those beyond MAF > 0.05)
+-   `1000-genome-38-for-imp-2.site.gz`: SNP site file containing all variants from the haplotype panel (including those beyond MAF \> 0.05)
 -   `1000-genome-38-for-imp-2.region`: Chunked region file for genomic interval partitioning
 -   `--cb-group clustering-test-predict.singlet`: Group ID file for singlets obtained from clustering in Step 2
 
@@ -223,7 +233,7 @@ tagtools impute --bam keep-bc-sub.bam --out-name imputed-test --ref genome.fa --
 
 This module performs sample demultiplexing using demuxlet, taking as input: a mixed-sample single-cell sequencing file, a cell barcode list file, and an imputed genotype file.
 
-```bash
+``` bash
 tagtools demultiplex --help
 
 usage: tagtools demultiplex [-h] --vcf VCF --bam BAM --cb-list CB_LIST --out-dir OUT_DIR [--nt NT] [--info INFO]
@@ -243,7 +253,7 @@ options:
 
 **Example command using the demo dataset:**
 
-```bash
+``` bash
 tagtools demultiplex --bam keep-bc-sub.bam --cb-list all-cb-list.txt --out-dir demultiplexing-test --nt 48 --info 0.4 --vcf imputed-test-imp-raw.bcf
 ```
 
@@ -252,22 +262,22 @@ tagtools demultiplex --bam keep-bc-sub.bam --cb-list all-cb-list.txt --out-dir d
 -   `all-cb-list.txt`: Cell barcode list for demultiplexing
 -   `demultiplexing-test`: Output directory name
 -   `imputed-test-imp-raw.bcf`: Input file containing imputed genotypes
--   `--info 0.4`: Filter threshold retaining SNPs with INFO score > 0.4 for demultiplexing
+-   `--info 0.4`: Filter threshold retaining SNPs with INFO score \> 0.4 for demultiplexing
 
 **Output files:**
 
--   `demuxlet-merge.vcf.gz`: Filtered genotype file containing SNPs with INFO > 0.4 and MAC > 1
+-   `demuxlet-merge.vcf.gz`: Filtered genotype file containing SNPs with INFO \> 0.4 and MAC \> 1
 -   `demuxlet.best`: Primary demultiplexing results file
 -   `demuxlet.single`: Statistics generated by demuxlet for matching each cell with each possible sample
 -   `demuxlet.sing2`: Statistics generated by demuxlet for matching each cell with each possible configuration of doublet
 
 ------------------------------------------------------------------------
 
-## Quick Start Workflow
+## Quick start workflow
 
 Here is a complete workflow using the demo dataset:
 
-```bash
+``` bash
 # Step 1: Create haplotype panel (run once per reference genome)
 tagtools reference --vcf-list vcf_files.txt --out-name 1000-genome-38-for-imp-2 --rm-chr --nt 48
 
@@ -283,10 +293,110 @@ tagtools demultiplex --bam keep-bc-sub.bam --cb-list all-cb-list.txt     --out-d
 
 ------------------------------------------------------------------------
 
+## BAM file processing toolkit
+
+The following utility modules provide pre-processing and data manipulation functionality for BAM files. They are designed to be used independently or as part of a custom workflow.
+
+### Utility modules: `tagtools index`
+
+Create an index for bgzip compressed files to enable efficient random access.
+
+``` bash
+tagtools index --help
+
+usage: tagtools index [-h] --file FILE [-o INDEX_NAME]
+
+Create index for bgzip compressed file
+
+options:
+  -h, --help            show this help message and exit
+  --file FILE           Path to bgzip compressed file
+  -o INDEX_NAME, --index-name INDEX_NAME
+                        Output path for index file (default: file.gzi)
+```
+
+**Example usage:**
+
+``` bash
+# Create index with default name (file.gzi)
+tagtools index --file input.vcf.gz
+
+# Create index with custom output path
+tagtools index --file input.vcf.gz -o custom_index.gzi
+```
+
+### Utility modules: `tagtools split`
+
+Split a BAM file into separate files based on the values of a specified tag (e.g., cell barcode CB tag).
+
+``` bash
+tagtools split --help
+
+usage: tagtools split [-h] --bam BAM [--nt NT] --out-dir OUT_DIR [--tag-name TAG_NAME] --tag-list TAG_LIST [--region-file REGION_FILE]
+
+Split BAM file by tag
+
+options:
+  -h, --help            show this help message and exit
+  --bam BAM             Input BAM file path
+  --nt NT               Number of threads (default: 4)
+  --out-dir OUT_DIR     Output directory
+  --tag-name TAG_NAME   Tag name (default: CB)
+  --tag-list TAG_LIST   Tag list file (one tag value per line)
+  --region-file REGION_FILE
+                        Region file (optional, BED format)
+```
+
+**Example usage:**
+
+``` bash
+# Split by cell barcode (CB tag)
+tagtools split --bam sample.bam --tag-list barcodes.txt --out-dir split_output/ --nt 8
+
+# Split with custom tag name and region restriction
+tagtools split --bam sample.bam --tag-name CB --tag-list umi_list.txt --out-dir split_output/ --region-file regions.bed --nt 4
+```
+
+### Utility modules: `tagtools call`
+
+Call variants from BAM files and compute genotype likelihoods (PL values) for specified samples and sites.
+
+``` bash
+tagtools call --help
+
+usage: tagtools call [-h] --bam BAM [--nt NT] --out-name OUT_NAME --ref REF [--tag-name TAG_NAME] --tag-list TAG_LIST --site SITE [--chunk-size CHUNK_SIZE]
+
+Call variants and perform genotyping
+
+options:
+  -h, --help            show this help message and exit
+  --bam BAM             Input BAM file path
+  --nt NT               Number of threads (default: 4)
+  --out-name OUT_NAME   Output file name
+  --ref REF             Reference genome file (FASTA format)
+  --tag-name TAG_NAME   Tag name (default: CB)
+  --tag-list TAG_LIST   Tag list file (one tag value per line)
+  --site SITE           Site file (BED format, bgzip compressed and indexed with tabix)
+  --chunk-size CHUNK_SIZE
+                        Chunk size for parallel processing (default: 20)
+```
+
+**Example usage:**
+
+``` bash
+# Basic variant calling with genotype likelihoods
+tagtools call --bam sample.bam --tag-list barcodes.txt --ref genome.fa --site sites.bed.gz --out-name genotyping_results --nt 8
+
+# With custom chunk size for large datasets
+tagtools call --bam sample.bam --tag-list barcodes.txt --ref genome.fa --site sites.bed.gz --out-name genotyping_results --chunk-size 50 --nt 16
+```
+
+------------------------------------------------------------------------
+
 ## Contact
 
 Any issues with **TagTools** can be filed with [GitHub issue tracker](https://github.com/MicrobeLab/TagTools/issues). We are committed to maintain this repository to assist users and tackle errors.
 
 **Email**
 
--   [lingw6@alumni.sysu.edu.cn](mailto:lingw6@alumni.sysu.edu.cn) (Guo-wang Lin)
+-   [lingw6\@alumni.sysu.edu.cn](mailto:lingw6@alumni.sysu.edu.cn) (Guo-wang Lin)
