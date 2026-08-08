@@ -64,7 +64,7 @@ def split_vcf(*, vcf, bam, nt, out_dir, cb_list, tag_name='CB', info=0.4):
         os.system(cmd1)
         sub_bam_list.append(f'{out_name}-{chrome}-sub.bam')
     filter_bam = f'{out_name}-filter-region.bam'
-    os.system(rf'''samtools cat -@ {nt} -o {filter_bam} {' '.join(sub_bam_list)}
+    os.system(rf'''samtools cat -o {filter_bam} {' '.join(sub_bam_list)}
     rm {' '.join(f'{i} {i}.csi' for i in sub_bam_list)}
     samtools index -@ {nt} {filter_bam}''')
     
