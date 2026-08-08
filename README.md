@@ -306,9 +306,9 @@ tagtools index --help
 
 usage: tagtools index [-h] --file FILE [-o INDEX_NAME]
 
-Create index for bgzip compressed file
+Create index for bgzip compressed file to enable random access.
 
-options:
+optional arguments:
   -h, --help            show this help message and exit
   --file FILE           Path to bgzip compressed file
   -o INDEX_NAME, --index-name INDEX_NAME
@@ -332,19 +332,20 @@ Split a BAM file into separate files based on the values of a specified tag (e.g
 ``` bash
 tagtools split --help
 
-usage: tagtools split [-h] --bam BAM [--nt NT] --out-dir OUT_DIR [--tag-name TAG_NAME] --tag-list TAG_LIST [--region-file REGION_FILE]
+usage: tagtools split [-h] --bam BAM [--nt NT] --out-dir OUT_DIR [--tag-name TAG_NAME] --tag-list TAG_LIST
+                      [--region-file REGION_FILE]
 
-Split BAM file by tag
+Split a BAM file into separate files based on a specified tag value.
 
-options:
+optional arguments:
   -h, --help            show this help message and exit
   --bam BAM             Input BAM file path
   --nt NT               Number of threads (default: 4)
   --out-dir OUT_DIR     Output directory
   --tag-name TAG_NAME   Tag name (default: CB)
-  --tag-list TAG_LIST   Tag list file (one tag value per line)
+  --tag-list TAG_LIST   Tag list file
   --region-file REGION_FILE
-                        Region file (optional, BED format)
+                        Region file (optional)
 ```
 
 **Example usage:**
@@ -364,21 +365,22 @@ Call variants from BAM files and compute genotype likelihoods (PL values) for sp
 ``` bash
 tagtools call --help
 
-usage: tagtools call [-h] --bam BAM [--nt NT] --out-name OUT_NAME --ref REF [--tag-name TAG_NAME] --tag-list TAG_LIST --site SITE [--chunk-size CHUNK_SIZE]
+usage: tagtools call [-h] --bam BAM [--nt NT] --out-name OUT_NAME --ref REF [--tag-name TAG_NAME] --tag-list TAG_LIST
+                     --site SITE [--chunk-size CHUNK_SIZE]
 
-Call variants and perform genotyping
+Call variants from BAM files and compute genotype likelihoods (PL values).
 
-options:
+optional arguments:
   -h, --help            show this help message and exit
   --bam BAM             Input BAM file path
   --nt NT               Number of threads (default: 4)
   --out-name OUT_NAME   Output file name
-  --ref REF             Reference genome file (FASTA format)
+  --ref REF             Reference genome file
   --tag-name TAG_NAME   Tag name (default: CB)
-  --tag-list TAG_LIST   Tag list file (one tag value per line)
-  --site SITE           Site file (BED format, bgzip compressed and indexed with tabix)
+  --tag-list TAG_LIST   Tag list file
+  --site SITE           Site file
   --chunk-size CHUNK_SIZE
-                        Chunk size for parallel processing (default: 20)
+                        Chunk size (default: 20)
 ```
 
 **Example usage:**
