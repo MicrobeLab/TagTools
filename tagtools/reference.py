@@ -66,68 +66,76 @@ def create_hap_panel(*, vcf_list, out_name, nt, add_chr=False, rm_chr=False):
     if not add_chr and not rm_chr:
         mod_chr = ''
     elif add_chr:
-        mod_chr = rf''' | mawk '{{print "chr"$0}}' '''
+        mod_chr = rf''' | mawk '{{ chrome=substr($0, 1, 3); if (chrome=="chr") print $0; else print "chr" $0 }}' '''
     elif rm_chr:
-        mod_chr = rf'''| mawk '{{tmp=substr($0,4); print tmp}}' '''
+        mod_chr = rf'''| mawk '{{ chrome=substr($0, 1, 3); if (chrome=="chr") print substr($0, 4); else print }}' '''
     else:
-        raise RuntimeError(f'add_chr and rm_chr both True.')
-    
+        raise ValueError(f'add_chr and rm_chr both True.')
+
     tmp_name = f'{out_name}-tmp.gz'
     with open(vcf_list) as h1:
         data = [i.split()[0] for i in h1]
+    if any(not i.endswith('vcf.gz') for i in data):
+        raise ValueError(f'all vcf files in {vcf_list} should bed bgzip compressed format end with ".vcf.gz".')
+
     os.system(rf'''cat {' '.join(data)} > {tmp_name}''')
-    index_bgzip(tmp_name)
+    index_file = index_bgzip(tmp_name)
     regions = chunk_bgzip(tmp_name, chunk_num=nt * 2)
     header = f'{tmp_name}.header'
-    os.system(rf'''bcftools view -h {data[0]} | perl -nale 'print if !/^##contig=<ID/' > {header} ''')
-    
+    os.system(rf'''bcftools view -h {data[0]} > {header} ''')
+
     make_hap_cmds = [rf'''bgzip -b {start} -s {q_len} {tmp_name} |mawk -F '\t' '
         BEGIN {{
             a["G"] = a["C"] = a["T"] = a["A"] = 1;
             OFS = "\t";
         }}
         (substr($0, 1, 1) != "#") && ($4 in a) && ($5 in a) {{
-            if ($3 == ".") {{
-                $3 = $1 "-" $2 ":" $4 ":" $5;
-            }}
+            $3 = $1 "-" $2 ":" $4 ":" $5;
             print;
-        }}' {mod_chr} | cat {header} - | bgzip > {tmp_name}-chunk{num}.vcf.gz && tabix -C {tmp_name}-chunk{num}.vcf.gz
+        }}' {mod_chr} | cat {header} - | bgzip > {tmp_name}-chunk{num}.vcf.gz 
+    tabix -s1 -b2 -e2 -C {tmp_name}-chunk{num}.vcf.gz
     bcftools view -Ob -o {tmp_name}-chunk{num}.bcf {tmp_name}-chunk{num}.vcf.gz
+    rm {tmp_name}-chunk{num}.vcf.gz {tmp_name}-chunk{num}.vcf.gz.csi
+
     bcftools view -G -Ob -o {tmp_name}-chunk{num}.site.bcf {tmp_name}-chunk{num}.bcf
-    bcftools view -q 0.05:minor -Ob {tmp_name}-chunk{num}.site.bcf | \
+
+    bcftools view -q 0.05:minor -Ob {tmp_name}-chunk{num}.bcf | \
     bcftools query -f "%CHROM\t%POS\t%REF,%ALT\n" | bgzip > {tmp_name}-chunk{num}.MAF0.05.site.gz
+
     bcftools query -f "%CHROM\t%POS\t%REF,%ALT\n" {tmp_name}-chunk{num}.site.bcf | \
     bgzip > {tmp_name}-chunk{num}.site.gz
-    rm {tmp_name}-chunk{num}.vcf.gz {tmp_name}-chunk{num}.vcf.gz.csi
+
     ''' for num, start, q_len in regions]
     keep_bcf = [f'{tmp_name}-chunk{num}.bcf' for num, *_ in regions]
     site_bcf = [f'{tmp_name}-chunk{num}.site.bcf' for num, *_ in regions]
     site_tsv = [f'{tmp_name}-chunk{num}.site.gz' for num, *_ in regions]
     common_site = [f'{tmp_name}-chunk{num}.MAF0.05.site.gz' for num, *_ in regions]
-    
+
     with Pool(nt) as p1:
         p1.map(os.system, make_hap_cmds, chunksize=1)
-    
+
     os.system(rf'''bcftools concat --threads {nt} -Ob -o {out_name}.bcf --write-index {' '.join(keep_bcf)}
     bcftools concat --threads {nt} -Ob -o {out_name}.site.bcf --write-index {' '.join(site_bcf)}
     rm {' '.join(site_bcf)} {' '.join(keep_bcf)}
 
-    cat {' '.join(site_tsv)}  > {out_name}.site.gz
-    cat {' '.join(common_site)}  > {out_name}.MAF0.05.site.gz
-    tabix -s1 -b2 -e2 -C {out_name}.MAF0.05.site.gz
-    tabix -s1 -b2 -e2 -C {out_name}.site.gz && rm {' '.join(site_tsv + common_site)}
-    rm {tmp_name} {tmp_name}.gzi {header}''')
-    
+    cat {' '.join(site_tsv)} | zcat | mawk '!a[$1" "$2]++'| \
+        bgzip -@ {nt} > {out_name}.site.gz && tabix -s1 -b2 -e2 -C {out_name}.site.gz
+    cat {' '.join(common_site)} | zcat | mawk '!a[$1" "$2]++' | \
+        bgzip -@ {nt} > {out_name}.MAF0.05.site.gz && tabix -s1 -b2 -e2 -C {out_name}.MAF0.05.site.gz
+    rm {' '.join(site_tsv + common_site)}
+    rm {tmp_name} {index_file} {header}''')
+
     # make the chunk file for GLIMPSE imputation
     with os.popen(f'tabix -l {out_name}.site.gz') as h1:
         keep_chr = [i.strip() for i in h1]
     chunk_cmds = [rf'''GLIMPSE_chunk --input {out_name}.site.bcf --region {chrome} --window-size 2000000 \
     --buffer-size 200000 --output {out_name}-chunk{chrome}-region.txt''' for chrome in keep_chr]
     keep_chunk = [f'{out_name}-chunk{chrome}-region.txt' for chrome in keep_chr]
-    
+
     with Pool(nt) as p:
         p.map(os.system, chunk_cmds, chunksize=1)
-    os.system(rf'''cat {' '.join(keep_chunk)} > {out_name}.region && rm {' '.join(keep_chunk)}
+    os.system(rf'''cat {' '.join(keep_chunk)} | \
+        perl -nale '$F[0]=$.; print join "\t",@F' > {out_name}.region && rm {' '.join(keep_chunk)}
     rm {out_name}.site.bcf {out_name}.site.bcf.csi''')
     return f'{out_name}.bcf {out_name}.site.gz {out_name}.region'.split()
 
@@ -146,7 +154,7 @@ def main(args=None):
     if args is None:
         args = parser.parse_args()
     return create_hap_panel(vcf_list=args.vcf_list, out_name=args.out_name, nt=args.nt, add_chr=args.add_chr,
-                     rm_chr=args.rm_chr)
+                            rm_chr=args.rm_chr)
 
 
 if __name__ == '__main__':

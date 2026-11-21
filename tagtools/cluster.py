@@ -1,4 +1,5 @@
 import argparse
+import time
 from sklearn.cluster import SpectralClustering
 import matplotlib.pyplot as plt
 import gzip
@@ -60,6 +61,7 @@ def index_bgzip(file):
     bam_index[2::2] = np.cumsum(total['unzip'], dtype=np.uint64)
     index_name = f'{file}.gzi'
     bam_index.tofile(index_name)
+    return index_name
 
 
 def chunk_sam(sam_file, *, chunk_num):
@@ -83,25 +85,23 @@ def cb_acc(cb_count):
         return [(g_name, sum(int(i[-1]) for i in rows)) for g_name, rows in m1]
 
 
-def split_by_tag(*, bam, nt, out_name, tag_name='CB', tag_list, region_file):
-    mid_sam = f'{out_name}-tmp.sam.gz'
-    os.system(rf'''samtools view -O BAM -@ {nt} --tag-file {tag_name}:{tag_list} -L {region_file} {bam} | \
-        samtools sort -@ {nt} -t {tag_name} -O SAM -T {mid_sam}-tmp -o {mid_sam}''')
-    index_bgzip(mid_sam)
-    regions = chunk_sam(sam_file=mid_sam, chunk_num=nt * 2)
-    header = f'{mid_sam}.header'
-    os.system(rf'''samtools view -H {bam} > {header}''')
-    
-    cmd1 = [rf'''bgzip -b {start} -s {q_len} {mid_sam} | \
+def split_by_tag(*, sort_tag_sam, nt, tag_name='CB', tag_type='Z'):
+    index_name = index_bgzip(sort_tag_sam)
+    regions = chunk_sam(sam_file=sort_tag_sam, chunk_num=nt * 2)
+    header = f'{sort_tag_sam}.header'
+    os.system(rf'''samtools view -H {sort_tag_sam} > {header}''')
+    pre_len = len(f'{tag_name}:{tag_type}:') + 1
+    tag_len = len(tag_name)
+    cmd1 = [rf'''bgzip -b {start} -s {q_len} {sort_tag_sam} | \
         mawk -F '\t' '{{
             for(i=12;i<=NF;i++){{
-                if(substr($i, 1, 2)=="{tag_name}"){{ tag=substr($i, 6); print tag"\t"length+1; next;}}
-            }} }}' | bgzip > {mid_sam}-{num}.wc.gz ''' for num, start, q_len in regions]
-    
-    header_size = get_header_size(mid_sam)
+                if(substr($i, 1, {tag_len})=="{tag_name}"){{ tag=substr($i, {pre_len}); print tag"\t"length+1; next;}}
+            }} }}' | bgzip > {sort_tag_sam}-{num}.wc.gz ''' for num, start, q_len in regions]
+
+    header_size = get_header_size(sort_tag_sam)
     with Pool(nt) as p1:
         p1.map(os.system, cmd1, chunksize=1)
-        cb_result_files = [f'{mid_sam}-{num}.wc.gz' for num, *_ in regions]
+        cb_result_files = [f'{sort_tag_sam}-{num}.wc.gz' for num, *_ in regions]
         final = list(itertools.chain.from_iterable(p1.map(cb_acc, cb_result_files, chunksize=1)))
         cell_order = []
         cell_count = defaultdict(int)
@@ -112,34 +112,33 @@ def split_by_tag(*, bam, nt, out_name, tag_name='CB', tag_list, region_file):
         cell_len = [cell_count[i] for i in cell_order]
         c_index = [(start, end - start) for start, end in pairwise(itertools.accumulate(cell_len, initial=header_size))]
         c_index = [(cell, start, q_len) for cell, (start, q_len) in zip(cell_order, c_index)]
-        cmd2 = [rf'''bgzip -b {start} -s {q_len} {mid_sam} | \
+        cmd2 = [rf'''bgzip -b {start} -s {q_len} {sort_tag_sam} | \
             mawk -F '\t' 'BEGIN{{OFS="\t"}} {{ if($5==255){{$5=60;}} print;}}' | cat {header} - | \
-            samtools view -O BAM -o {mid_sam}-{cell}.bam --write-index ''' for cell, start, q_len in c_index]
+            samtools view -O BAM -o {sort_tag_sam}-{cell}.bam --write-index ''' for cell, start, q_len in c_index]
         p1.map(os.system, cmd2, chunksize=1)
-    os.system(rf'''rm {' '.join(cb_result_files)} {mid_sam} {mid_sam}.gzi {header}''')
-    return [(cell, f'{mid_sam}-{cell}.bam') for cell in cell_order]
+    os.system(rf'''rm {' '.join(cb_result_files)} {index_name} {header}''')
+    return [(cell, f'{sort_tag_sam}-{cell}.bam') for cell in cell_order]
 
 
-def call_pl(*, bam, nt, out_name, ref, tag_name, tag_list, site):
+def call_pl(*, bam, nt=16, out_name, ref, tag_name='CB', tag_list, site, tag_type='Z', call_cell_batch_size=20):
     tmp_dir = f'{out_name}-dir'
     if os.path.exists(tmp_dir):
         raise FileExistsError(f'{tmp_dir} exits.')
     os.system(f'mkdir {tmp_dir}')
     split_name = f'{tmp_dir}/for-split'
-    
+
     new_size = f'{split_name}.site.gz'
+    tmp_sam = f'{split_name}-sort-tag.sam.gz'
     os.system(rf'''samtools depth -@ {nt} -b {site} {bam} | mawk '$NF>0{{print $1"\t"$2}}' | \
             tabix -R - {site} | mawk '!a[$1" "$2]++' | bgzip > {new_size} && tabix -s1 -b2 -e2 -C {new_size}
-            gzip -dc {new_size} | sort -k1,1 -k2,2n | mawk '{{print NR"\t"$0}}' | bgzip > {new_size}-num.gz
-            tabix -s1 -b2 -e2 -C {new_size}-num.gz''')
-    
-    cell_bam = split_by_tag(bam=bam, nt=nt, out_name=split_name, tag_name=tag_name, tag_list=tag_list,
-                            region_file=new_size)
+        samtools view -O BAM -@ {nt} --tag-file {tag_name}:{tag_list} -L {new_size} {bam} | \
+            samtools sort -@ {nt} -t {tag_name} -O SAM -T {tmp_sam}-tmp -o {tmp_sam}
+            ''')
+    cell_bam = split_by_tag(sort_tag_sam=tmp_sam, nt=nt, tag_type=tag_type, tag_name=tag_name)
     random.shuffle(cell_bam)
-    b_size = 20
-    keep_cell = list(batched([i[0] for i in cell_bam], b_size))
-    keep_bam = list(batched([i[1] for i in cell_bam], b_size))
-    
+    keep_cell = list(batched([i[0] for i in cell_bam], call_cell_batch_size))
+    keep_bam = list(batched([i[1] for i in cell_bam], call_cell_batch_size))
+
     call_pl_cmds = [rf'''samtools depth -b {new_size} {' '.join(bam_list)} | \
         mawk '{{for (i=3; i<=NF; i++) if($i > 0){{print $1"\t"$2; break}} }}' | tabix -R - {new_size} | \
         bgzip > {split_name}-chunk{num}.site.gz && tabix -s1 -b2 -e2 -C {split_name}-chunk{num}.site.gz
@@ -164,12 +163,11 @@ def call_pl(*, bam, nt, out_name, ref, tag_name, tag_list, site):
         rm {split_name}-chunk{num}.site.gz {split_name}-chunk{num}.site.gz.csi
         rm {' '.join(bam_list)} {' '.join(f'{i}.csi' for i in bam_list)}
         ''' for num, (cell_list, bam_list) in enumerate(zip(keep_cell, keep_bam))]
-    
+
     keep_pl = [rf'''{split_name}-chunk{num}.col.pl.gz''' for num, _ in enumerate(keep_cell)]
     with Pool(nt) as p1:
         p1.map(os.system, call_pl_cmds, chunksize=1)
     pl_file = f'{out_name}.pl.gz'
-    os.system(f'rm {new_size} {new_size}.csi')
     os.system(rf'''cat {' '.join(keep_pl)}  > {pl_file} && tabix -s2 -b1 -e1 -C {pl_file}''')
     os.system(f'rm -R {tmp_dir}')
     return pl_file
@@ -180,22 +178,21 @@ def chunk_to_numpy(cell, *, pos_file, pl_file):
         gl = 10 ** (np.array([i.split()[-3:] for i in h1], dtype=np.uint32) * -0.1)
         gp = gl / (gl.sum(axis=1)[:, np.newaxis])  # # convert GL to GP
         ds = (gp * np.array([0, 1, 2])).sum(axis=1)  # covert GP to DS
-    
+
     cmd1 = rf'''tabix {pl_file} {cell}|mawk '{{print $3"\t"$4}}'|tabix -R - {pos_file} |perl -nale 'print $F[-1]' '''
     with os.popen(cmd1) as h1:
         pos_nums = np.array([i for i in h1], dtype=np.uint32)
-    
+
     d1 = np.full(len(ds), 0, dtype=np.dtype([('pos', np.uint32), ('ds', np.float64)]))
     d1['pos'] = pos_nums
     d1['ds'] = ds
     return d1
 
 
-def pl_to_numpy(*, pl_file, nt, pos_file):
+def pl_to_numpy(*, pl_file, nt, pos_file, keep_min_snp=50):
     with os.popen(f'tabix -l {pl_file}') as h1:
         all_cell = [i.strip() for i in h1]
     fun1 = partial(chunk_to_numpy, pl_file=pl_file, pos_file=pos_file)
-    keep_min_snp = 50
     with Pool(nt) as p1:
         final = p1.map(fun1, all_cell, chunksize=10)
         keep_len = [len(i) for i in final]
@@ -203,18 +200,18 @@ def pl_to_numpy(*, pl_file, nt, pos_file):
         cell_order = list(itertools.compress(all_cell, m1))
         final = list(itertools.compress(final, m1))
         keep_len = list(itertools.compress(keep_len, m1))
-    
+
     pl_bin = np.concatenate(final)
     acc = itertools.accumulate(keep_len, initial=0)
     region_data = np.fromiter(itertools.pairwise(acc), dtype=[(it1, np.uint32) for it1 in 'start end'.split()])
-    
+
     index_data = get_combin(len(region_data))
     a = index_data[::2]
     b = index_data[1::2]
     index_data = np.zeros(len(a), dtype=[(it1, np.uint32) for it1 in 'index1 index2'.split()])
     index_data['index1'] = a
     index_data['index2'] = b
-    
+
     cor_matrix = get_half_cor_matrix(pl_bin=pl_bin, region_data=region_data, index_data=index_data)
     cor_matrix = get_full_cor_matrix(cor_matrix)
     return cor_matrix, cell_order
@@ -287,11 +284,11 @@ def get_share(num1, num2):
     index1 = 0
     index2 = 0
     keep_count = 0
-    
+
     while index1 < len(num1) and index2 < len(num2):
         row1 = num1[index1]
         row2 = num2[index2]
-        
+
         if row1['pos'] == row2['pos']:
             tmp1[keep_count] = row1
             tmp2[keep_count] = row2
@@ -339,7 +336,7 @@ def make_new_centers(*, data, final):
     for i in g_names:
         m2 = np.array([i == j for j in m1], dtype=np.bool_)
         groups.append(m2)
-    
+
     new_center = []
     for i in groups:
         sub1 = data[i]
@@ -353,12 +350,12 @@ def make_new_centers(*, data, final):
     return new_final
 
 
-def get_predict_index(*, out_name, cluster_num, pl_file, nt, plot_log=False):
+def get_predict_index(*, out_name, cluster_num, pl_file, nt, plot_log=False, step_k=10):
     pos_file = f'{out_name}.pos.gz'
     os.system(rf'''bgzip -dc {pl_file} | mawk '!a[$3" "$4]++{{print $3"\t"$4}}'| \
             sort -k1,1 -k2,2n | perl -nale 'print "$_\t$."' | bgzip > {pos_file}
             tabix -s1 -b2 -e2 -C {pos_file}''')
-    
+
     matrix_data, cell_order = pl_to_numpy(pl_file=pl_file, nt=nt, pos_file=pos_file)
     tmp_final = cluster_predict(cor_matrix=matrix_data, cluster_num=cluster_num)
     new_index = make_new_centers(data=matrix_data, final=tmp_final)
@@ -369,11 +366,11 @@ def get_predict_index(*, out_name, cluster_num, pl_file, nt, plot_log=False):
     os.system(rf'''rm {pos_file} {pos_file}.csi
     perl -nale 'print join "\t",($F[0], "group$F[-1]") if $F[-2] eq $F[-1]' \
     {out_name}-predict.txt > {out_name}-predict.singlet''')
-    
+
     if plot_log:
         # Elbow Method plot
         inertia = []
-        k_values = np.array(list(range(2, 11)), dtype=np.uint32)
+        k_values = np.array(list(range(2, step_k + 1)), dtype=np.uint32)
         for k in k_values:
             spectral = SpectralClustering(n_clusters=k, affinity='precomputed', random_state=42)
             labels = spectral.fit_predict(matrix_data)
@@ -384,14 +381,14 @@ def get_predict_index(*, out_name, cluster_num, pl_file, nt, plot_log=False):
                 distances = np.linalg.norm(cluster_data - cluster_centers[i], axis=1)
                 inertia_mtp += np.sum(distances ** 2)
             inertia.append(inertia_mtp)
-        
+
         inertia = np.array(inertia, dtype=np.float64)
         inertia = (inertia - np.min(inertia)) / (np.max(inertia) - np.min(inertia))  # Min-Max normalized
         singlet_num = [a for a, b in new_index if a == b]
         cluster_count = Counter(singlet_num)
         names = list(cluster_count.keys())
         counts = list(cluster_count.values())
-        
+
         fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 6))
         ax1.plot(k_values, inertia, marker='o')
         ax1.set_xlabel('Number of clusters (k)')
@@ -402,7 +399,7 @@ def get_predict_index(*, out_name, cluster_num, pl_file, nt, plot_log=False):
         plt.tight_layout()
         plt.savefig(f'{out_name}.inertia.pdf')
         plt.close()
-        
+
         with open(f'{out_name}-best-k.txt', 'wt') as h1:
             for num1, num2 in zip(k_values, inertia):
                 print(out_name, num1, num2, file=h1)
@@ -428,7 +425,7 @@ def main(args=None):
     # 可选参数（有默认值，required=False）
     parser.add_argument('--nt', '--threads', type=int, default=16, help='number of threads to used, default: 16')
     parser.add_argument('--plot-log', action='store_true', help='plot the log file, default: false')
-    
+
     if args is None:
         args = parser.parse_args()
     # 调用主要函数
@@ -446,3 +443,14 @@ def main(args=None):
 
 if __name__ == '__main__':
     main()
+
+# if __name__ == '__main__':
+#     # def call_pl(*, bam, nt=16, out_name, ref, tag_name='CB', tag_list, site, tag_type='Z', call_cell_batch_size=20):
+#     site1 = '/data4/lingw/file4/liangqiaoxing/tagtools/download-bam-file/hap-file/hg38-1KGP-for-tagtools.MAF0.05.site.gz'
+#     ref1 = '/data4/lingw/file4/heshuai/htslib-tools/ref/genome.fa'
+#     bam1 = '/data4/lingw/file4/liangqiaoxing/tagtools/download-bam-file/A.merged.bam'
+#     barcode1 = '/data4/lingw/file4/liangqiaoxing/tagtools/download-bam-file/A.merged.bam.1.barcode'
+#     t1 = time.monotonic()
+#     call_pl(bam=bam1, nt=48, out_name='test-call-pl-2', tag_list=barcode1, ref=ref1, site=site1)
+#     t2 = time.monotonic()
+#     print(f'time used {round(t2 - t1, 3)} sec.')
